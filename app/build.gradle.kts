@@ -1,9 +1,11 @@
 import org.gradle.api.tasks.TaskAction
 import org.gradle.api.tasks.OutputDirectory
-import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.Input
+import org.gradle.api.provider.Property
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
+import java.io.File
 import com.android.build.gradle.internal.cxx.configure.gradleLocalProperties
 import org.jetbrains.dokka.gradle.engine.parameters.KotlinPlatform
 import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
@@ -23,65 +25,58 @@ val javaTarget = JvmTarget.fromTarget(libs.versions.jvmTarget.get())
 
 abstract class GenerateGitHashTask : DefaultTask() {
 
-    @get:InputDirectory
-    @get:org.gradle.api.tasks.PathSensitive(
-        org.gradle.api.tasks.PathSensitivity.RELATIVE
-    )
-    abstract val repositoryDir: DirectoryProperty
+    @get:Input
+    abstract val repositoryPath: Property<String>
 
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
     @TaskAction
     fun generate() {
-        val repository = repositoryDir.get().asFile
+        val repository = File(repositoryPath.get())
 
-        val hash = try {
-            val process = ProcessBuilder(
-                "git",
-                "rev-parse",
-                "--short=7",
-                "HEAD"
-            )
-                .directory(repository)
-                .redirectErrorStream(true)
-                .start()
+        val process = ProcessBuilder(
+            "git",
+            "rev-parse",
+            "--short=7",
+            "HEAD"
+        )
+            .directory(repository)
+            .redirectErrorStream(true)
+            .start()
 
-            val result = process.inputStream
-                .bufferedReader()
-                .readText()
-                .trim()
+        val result = process.inputStream
+            .bufferedReader()
+            .readText()
+            .trim()
 
-            val exitCode = process.waitFor()
+        val exitCode = process.waitFor()
 
-            if (
-                exitCode == 0 &&
-                result.matches(Regex("[0-9a-fA-F]{7}"))
-            ) {
-                result
-            } else {
-                throw GradleException(
-                    "Gagal membaca Git commit hash: $result"
-                )
-            }
-        } catch (e: Exception) {
+        if (
+            exitCode != 0 ||
+            !result.matches(Regex("[0-9a-fA-F]{7}"))
+        ) {
             throw GradleException(
-                "Gagal mengambil Git commit hash",
-                e
+                "Gagal mengambil Git commit hash. Output: $result"
             )
         }
 
-        val outFile = outputDir.file("git-hash.txt").get().asFile
-        outFile.parentFile.mkdirs()
-        outFile.writeText(hash)
+        val outputFile = outputDir
+            .file("git-hash.txt")
+            .get()
+            .asFile
 
-        logger.lifecycle("Git commit hash untuk APK: $hash")
+        outputFile.parentFile.mkdirs()
+        outputFile.writeText(result)
+
+        logger.lifecycle("Git commit hash untuk APK: $result")
     }
 }
 
 val generateGitHash =
     tasks.register<GenerateGitHashTask>("generateGitHash") {
-        repositoryDir.set(layout.projectDirectory.dir(".."))
+        // Simpan path saat konfigurasi, jangan akses project di TaskAction.
+        repositoryPath.set(rootProject.projectDir.absolutePath)
         outputDir.set(
             layout.buildDirectory.dir("generated/git")
         )

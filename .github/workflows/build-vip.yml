@@ -21,6 +21,26 @@ jobs:
         with:
           fetch-depth: 0
 
+      # Memeriksa commit sumber build dan tag pre-release
+      - name: Periksa commit sumber build
+        run: |
+          echo "========================================"
+          echo "COMMIT YANG SEDANG DIBANGUN"
+          echo "========================================"
+          git rev-parse HEAD
+
+          echo ""
+          echo "========================================"
+          echo "TAG PRE-RELEASE DI REMOTE"
+          echo "========================================"
+          git ls-remote origin refs/tags/pre-release
+
+          echo ""
+          echo "========================================"
+          echo "INFORMASI GIT"
+          echo "========================================"
+          git log -1 --format="Commit: %H%nTanggal: %cd%nPesan: %s" --date=iso
+
       - name: Setup Java
         uses: actions/setup-java@v4
         with:

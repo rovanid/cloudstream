@@ -699,7 +699,9 @@ class HomeFragment : BaseFragment<FragmentHomeBinding>(
             homeMasterRecycler.setRecycledViewPool(ParentItemAdapter.sharedPool)
             homeMasterRecycler.adapter = homeMasterAdapter
 
-            homeApiFab.isVisible = isLayout(PHONE)
+            // Pemilih provider disembunyikan: Beranda selalu memakai provider default
+            homeApiFab.isVisible = false
+            homeChangeApi.isVisible = false
 
             homePreviewReloadProvider.setOnClickListener {
                 homeViewModel.loadAndCancel(

@@ -159,8 +159,8 @@ object InAppUpdater {
             app.get(releaseUrl, headers = headers).text
         ).toList()
 
-        val found = response.lastOrNull { rel ->
-            rel.prerelease || rel.tagName == "pre-release"
+        val found = response.firstOrNull { rel ->
+            rel.tagName == "pre-release"
         }
 
         val foundAsset = found?.assets?.filter { it ->

@@ -1,40 +1,94 @@
 name: Build Cloudstream VIP
-on: workflow_dispatch
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease:
+        description: "Tandai sebagai pre-release?"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
 
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
-      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Izinkan gradlew
         run: chmod +x ./gradlew
 
-      # Cek nama task yang benar di fork Anda: ./gradlew tasks --all | grep assemble
       - name: Build release
         run: ./gradlew assemblePrereleaseRelease --no-daemon
-
-      - name: Daftar APK hasil build
-        run: find app/build/outputs/apk -name "*.apk" -ls
 
       - name: Sign APK
         run: |
           echo "${{ secrets.KS_BASE64 }}" | base64 -d > vip.jks
-          APK=$(find app/build/outputs/apk -name "*.apk" | sort | head -n1)
-          echo "APK dipilih: $APK"
-          BT=$(ls $ANDROID_HOME/build-tools | sort -V | tail -n1)
-          $ANDROID_HOME/build-tools/$BT/zipalign -f -p 4 "$APK" aligned.apk
-          $ANDROID_HOME/build-tools/$BT/apksigner sign \
-            --ks vip.jks --ks-key-alias vipkey \
-            --ks-pass pass:${{ secrets.KS_PASS }} \
-            --out CloudstreamVIP-signed.apk aligned.apk
 
-      - uses: actions/upload-artifact@v4
+          APK=$(find app/build/outputs/apk -name "*.apk" | sort | head -n1)
+
+          if [ -z "$APK" ]; then
+            echo "ERROR: APK tidak ditemukan!"
+            exit 1
+          fi
+
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)
+
+          "$ANDROID_HOME/build-tools/$BT/zipalign" -f -p 4 "$APK" aligned.apk
+
+          "$ANDROID_HOME/build-tools/$BT/apksigner" sign \
+            --ks vip.jks \
+            --ks-key-alias vipkey \
+            --ks-pass env:KS_PASS \
+            --out CloudstreamVIP-signed.apk \
+            aligned.apk
+        env:
+          KS_PASS: ${{ secrets.KS_PASS }}
+
+      - name: Verifikasi tanda tangan APK
+        run: |
+          BT=$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n1)
+
+          "$ANDROID_HOME/build-tools/$BT/apksigner" verify \
+            --verbose CloudstreamVIP-signed.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
         with:
           name: CloudstreamVIP-signed
           path: CloudstreamVIP-signed.apk
+          if-no-files-found: error
+
+      - name: Pindahkan tag pre-release
+        if: ${{ inputs.prerelease }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git tag -f pre-release
+          git push -f origin refs/tags/pre-release
+
+      - name: Buat rilis
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.prerelease && 'pre-release' || format('v{0}', github.run_number) }}
+          name: Cloudstream VIP ${{ inputs.prerelease && 'pre-release' || format('v{0}', github.run_number) }}
+          prerelease: ${{ inputs.prerelease }}
+          files: CloudstreamVIP-signed.apk
+          fail_on_unmatched_files: true
+          generate_release_notes: true

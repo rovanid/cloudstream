@@ -1,3 +1,9 @@
+import org.gradle.api.tasks.TaskAction
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import com.android.build.gradle.internal.cxx.configure.gradleLocalProperties
 import org.jetbrains.dokka.gradle.engine.parameters.KotlinPlatform
 import org.jetbrains.dokka.gradle.engine.parameters.VisibilityModifier
@@ -17,11 +23,19 @@ val javaTarget = JvmTarget.fromTarget(libs.versions.jvmTarget.get())
 
 abstract class GenerateGitHashTask : DefaultTask() {
 
+    @get:InputDirectory
+    @get:org.gradle.api.tasks.PathSensitive(
+        org.gradle.api.tasks.PathSensitivity.RELATIVE
+    )
+    abstract val repositoryDir: DirectoryProperty
+
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
     @TaskAction
     fun generate() {
+        val repository = repositoryDir.get().asFile
+
         val hash = try {
             val process = ProcessBuilder(
                 "git",
@@ -29,7 +43,7 @@ abstract class GenerateGitHashTask : DefaultTask() {
                 "--short=7",
                 "HEAD"
             )
-                .directory(project.rootDir)
+                .directory(repository)
                 .redirectErrorStream(true)
                 .start()
 
@@ -46,14 +60,15 @@ abstract class GenerateGitHashTask : DefaultTask() {
             ) {
                 result
             } else {
-                logger.warn(
-                    "Tidak dapat membaca Git commit hash: $result"
+                throw GradleException(
+                    "Gagal membaca Git commit hash: $result"
                 )
-                ""
             }
         } catch (e: Exception) {
-            logger.warn("Gagal mengambil Git commit hash", e)
-            ""
+            throw GradleException(
+                "Gagal mengambil Git commit hash",
+                e
+            )
         }
 
         val outFile = outputDir.file("git-hash.txt").get().asFile
@@ -66,6 +81,7 @@ abstract class GenerateGitHashTask : DefaultTask() {
 
 val generateGitHash =
     tasks.register<GenerateGitHashTask>("generateGitHash") {
+        repositoryDir.set(layout.projectDirectory.dir(".."))
         outputDir.set(
             layout.buildDirectory.dir("generated/git")
         )

@@ -308,6 +308,7 @@ dependencies {
     implementation(libs.preference.ktx)
     implementation(libs.material)
     implementation(libs.constraintlayout)
+    implementation("com.facebook.shimmer:shimmer:0.5.0")
 
     // Coil Image Loading
     implementation(libs.bundles.coil)

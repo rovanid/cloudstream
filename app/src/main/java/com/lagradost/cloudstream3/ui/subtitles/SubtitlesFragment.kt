@@ -357,11 +357,11 @@ class SubtitlesFragment : BaseDialogFragment<SubtitleSettingsBinding>(
         }
 
         fun getDownloadSubsLanguageTagIETF(): List<String> {
-            return getKey<List<String>>(SUBTITLE_DOWNLOAD_KEY) ?: listOf("en")
+            return getKey<List<String>>(SUBTITLE_DOWNLOAD_KEY) ?: listOf("id")
         }
 
         fun getAutoSelectLanguageTagIETF(): String {
-            return getKey<String>(SUBTITLE_AUTO_SELECT_KEY) ?: "en"
+            return getKey<String>(SUBTITLE_AUTO_SELECT_KEY) ?: "id"
         }
     }
 
@@ -796,7 +796,7 @@ class SubtitlesFragment : BaseDialogFragment<SubtitleSettingsBinding>(
             }
 
             subsAutoSelectLanguage.setOnLongClickListener {
-                setKey(SUBTITLE_AUTO_SELECT_KEY, "en")
+                setKey(SUBTITLE_AUTO_SELECT_KEY, "id")
                 showToast(activity, R.string.subs_default_reset_toast, Toast.LENGTH_SHORT)
                 return@setOnLongClickListener true
             }
@@ -827,7 +827,7 @@ class SubtitlesFragment : BaseDialogFragment<SubtitleSettingsBinding>(
             }
 
             subsDownloadLanguages.setOnLongClickListener {
-                setKey(SUBTITLE_DOWNLOAD_KEY, listOf("en"))
+                setKey(SUBTITLE_DOWNLOAD_KEY, listOf("id"))
 
                 showToast(activity, R.string.subs_default_reset_toast, Toast.LENGTH_SHORT)
                 return@setOnLongClickListener true

@@ -201,6 +201,22 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
     // Null if defined as a variable
     // This needs to be run after view created
 
+    /**
+     * Di TV/emulator chip filter disembunyikan, jadi arah fokus D-pad dari kolom pencarian
+     * dan tombol filter diarahkan ke daftar yang sedang tampil.
+     */
+    private fun updateTvFocusTargets() {
+        if (isLayout(PHONE)) return
+        val b = binding ?: return
+        val target = when {
+            b.searchSuggestionsRecycler.isVisible -> R.id.search_suggestions_recycler
+            b.searchHistoryRecycler.isVisible -> R.id.search_history_recycler
+            else -> R.id.search_autofit_results
+        }
+        b.mainSearch.nextFocusDownId = target
+        b.searchFilter.nextFocusDownId = target
+    }
+
     private fun reloadRepos(success: Boolean = false) = main {
         searchViewModel.reloadRepos()
         context?.filterProviderByPreferredMedia()?.let { validAPIs ->
@@ -408,7 +424,8 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
         }
 
         val settingsManager = context?.let { PreferenceManager.getDefaultSharedPreferences(it) }
-        val isAdvancedSearch = settingsManager?.getBoolean("advanced_search", false) ?: false
+        // Selalu tampilkan satu grid penuh tanpa judul sumber
+        val isAdvancedSearch = false
         val isSearchSuggestionsEnabled = settingsManager?.getBoolean("search_suggestions_enabled", true) ?: true
 
         // Semua tipe (kecuali NSFW) selalu aktif; chip filter Movie / Seri TV / Anime disembunyikan
@@ -463,6 +480,7 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
                     // Hide suggestions when showing history or showing search results
                     searchSuggestionsRecycler.isVisible = !showHistory && isSearchSuggestionsEnabled
                 }
+                updateTvFocusTargets()
 
                 return true
             }
@@ -684,6 +702,7 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
             val hasSuggestions = suggestions.isNotEmpty()
             binding.searchSuggestionsRecycler.isVisible = hasSuggestions
             (binding.searchSuggestionsRecycler.adapter as? SearchSuggestionAdapter?)?.submitList(suggestions)
+            updateTvFocusTargets()
 
             // On non-phone layouts, redirect focus and handle back button
             if (!isLayout(PHONE)) {
@@ -703,5 +722,6 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
         }
 
         searchViewModel.updateHistory()
+        updateTvFocusTargets()
     }
 }

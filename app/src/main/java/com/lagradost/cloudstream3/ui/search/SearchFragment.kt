@@ -408,10 +408,13 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
         }
 
         val settingsManager = context?.let { PreferenceManager.getDefaultSharedPreferences(it) }
-        val isAdvancedSearch = settingsManager?.getBoolean("advanced_search", true) ?: true
+        val isAdvancedSearch = settingsManager?.getBoolean("advanced_search", false) ?: false
         val isSearchSuggestionsEnabled = settingsManager?.getBoolean("search_suggestions_enabled", true) ?: true
 
-        selectedSearchTypes = DataStoreHelper.searchPreferenceTags.toMutableList()
+        // Semua tipe (kecuali NSFW) selalu aktif; chip filter Movie / Seri TV / Anime disembunyikan
+        selectedSearchTypes = TvType.values().filter { it != TvType.NSFW }.toMutableList()
+        DataStoreHelper.searchPreferenceTags = selectedSearchTypes.toList()
+        binding.tvtypesChipsScroll.root.isVisible = false
 
         if (!isLayout(PHONE)) {
             binding.searchFilter.isFocusable = true

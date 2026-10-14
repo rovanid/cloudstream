@@ -33,6 +33,49 @@ data class ExpandableSearchList(
 const val SEARCH_HISTORY_KEY = "search_history"
 
 class SearchViewModel : ViewModel() {
+    /**
+     * true  = hanya tampilkan hasil yang judulnya cocok dengan kata kunci
+     * false = tampilkan semua hasil, hanya diurutkan berdasarkan kecocokan
+     */
+    private val STRICT_NAME_MATCH = true
+
+    private fun normalizeTitle(text: String): String =
+        text.lowercase().replace(Regex("[^\\p{L}\\p{N}]+"), " ").trim()
+
+    /**
+     * Skor kecocokan judul terhadap kata kunci (makin kecil makin cocok).
+     * null = tidak cocok. Setiap kata kunci harus menjadi awalan salah satu kata di judul
+     * (aksara CJK dicocokkan sebagai potongan teks karena tidak memakai spasi).
+     */
+    private fun matchScore(query: String, title: String): Int? {
+        val q = normalizeTitle(query)
+        val n = normalizeTitle(title)
+        if (q.isEmpty()) return 0
+        val words = n.split(" ")
+        val tokens = q.split(" ")
+        val allMatch = tokens.all { token ->
+            words.any { it.startsWith(token) } ||
+                (token.any { it.code > 0x2E80 } && n.contains(token))
+        }
+        if (!allMatch) return null
+        return when {
+            n == q -> 0
+            n.startsWith(q) -> 1
+            " $n".contains(" $q") -> 2
+            else -> 3
+        }
+    }
+
+    private fun filterAndRank(query: String, items: List<SearchResponse>): List<SearchResponse> {
+        val scored = items.map { it to matchScore(query, it.name) }
+        val kept = if (STRICT_NAME_MATCH) scored.filter { it.second != null } else scored
+        // sortedBy stabil: urutan asli dipertahankan untuk skor yang sama
+        return kept.sortedBy { it.second ?: Int.MAX_VALUE }.map { it.first }
+    }
+
+    /** Harus sama persis dengan MainAPI.name milik plugin MyHomepage. */
+    private val MAIN_SEARCH_PROVIDER = "🏠 My Homepage"
+
     private val _searchResponse: MutableLiveData<Resource<ExpandableSearchList>> =
         MutableLiveData()
     val searchResponse: LiveData<Resource<ExpandableSearchList>> get() = _searchResponse
@@ -147,7 +190,7 @@ class SearchViewModel : ViewModel() {
 
                     // just to be sure we are not adding the same shit for some reason
                     // Avoids weird behavior in the recyclerview by recreating the list
-                    this.list = (this.list + nextValue.items).distinctBy { it.url }
+                    this.list = (this.list + filterAndRank(query, nextValue.items)).distinctBy { it.url }
                 } ?: debugWarning {
                     "Expanded an item not in search load named $name, current list is ${expandableSearches.keys}"
                 }
@@ -192,7 +235,12 @@ class SearchViewModel : ViewModel() {
             index++
         }
 
-        return ExpandableSearchList(list, 1, false)
+        // Hapus hasil ganda antar sumber (judul + tipe yang sama)
+        // Urutkan ulang gabungan berdasarkan kecocokan dengan kata kunci
+        val ranked = lastQuery?.let { filterAndRank(it, list) } ?: list
+        val unique = ranked.distinctBy { it.name.trim().lowercase() to it.type }
+
+        return ExpandableSearchList(unique, 1, false)
     }
 
     private fun search(
@@ -229,15 +277,23 @@ class SearchViewModel : ViewModel() {
             lastQuery = query
 
             withContext(Dispatchers.IO) { // This interrupts UI otherwise
-                repos.filter { a ->
-                    (ignoreSettings || (providersActive.isEmpty() || providersActive.contains(a.name))) && (!isQuickSearch || a.hasQuickSearch)
-                }.amap { a -> // Parallel
+                // Pencarian hanya lewat provider utama (MyHomepage) kalau tersedia,
+                // karena ia sudah menggabungkan semua sumber. Jika belum terpasang, pakai semua provider.
+                val mainRepos = repos.filter { a ->
+                    a.name == MAIN_SEARCH_PROVIDER && (!isQuickSearch || a.hasQuickSearch)
+                }
+                val activeRepos = mainRepos.ifEmpty {
+                    repos.filter { a ->
+                        (ignoreSettings || (providersActive.isEmpty() || providersActive.contains(a.name))) && (!isQuickSearch || a.hasQuickSearch)
+                    }
+                }
+                activeRepos.amap { a -> // Parallel
                     val search = if (isQuickSearch) a.quickSearch(query) else a.search(query, 1)
                     if (currentSearchIndex != currentIndex) return@amap
                     if (search is Resource.Success) {
                         val searchValue = search.value
                         expandableSearches[a.name] =
-                            ExpandableSearchList(searchValue.items, 1, searchValue.hasNext)
+                            ExpandableSearchList(filterAndRank(query, searchValue.items), 1, searchValue.hasNext)
                     }
 
                     _currentSearch.postValue(expandableSearches)

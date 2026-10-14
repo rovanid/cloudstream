@@ -32,9 +32,11 @@ object QualityDataHelper {
     private const val DEFAULT_SOURCE_PRIORITY = 1
 
     /**
-     * Automatically skip loading links once this priority is reached
+     * Automatically skip loading links once this priority is reached.
+     * 6 = a 720p link (5) from a default-priority source (1), so playback starts
+     * as soon as the first decent link is found instead of waiting for all providers.
      **/
-    const val AUTO_SKIP_PRIORITY = 10
+    const val AUTO_SKIP_PRIORITY = 6
 
     /**
      * Must be higher than amount of QualityProfileTypes

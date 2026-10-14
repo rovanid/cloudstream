@@ -1012,6 +1012,104 @@ class GeneratorPlayer : FullScreenPlayer() {
         }
 
 
+    /** Instance (see VideoState.instance) that already had an automatic online subtitle search */
+    private var autoOnlineSubInstance: Int = -1
+
+    /**
+     * Silently searches the online subtitle providers for the auto-select language and selects
+     * the first result, but only when no subtitle in that language is already available.
+     * Runs at most once per loaded episode.
+     */
+    private fun autoFetchOnlineSubtitle() {
+        if (!subsProvidersIsActive) return
+        val langCode = preferredAutoSelectSubtitles?.takeIf { it.isNotBlank() } ?: return
+        val instance = viewModel.state.instance
+        if (autoOnlineSubInstance == instance) return
+        autoOnlineSubInstance = instance
+
+        viewModel.viewModelScope.launch {
+            // Give the provider's own subtitles some time to arrive first
+            delay(3000)
+            if (!isActive || viewModel.state.instance != instance) return@launch
+            if (viewModel.state.subtitles.any { it.matchesLanguageCode(langCode) }) return@launch
+
+            // Dubbed sources (e.g. "Indonesian dub") do not need subtitles
+            val sourceName = currentSelectedLink?.first?.name.orEmpty()
+            if (sourceName.contains("dub", ignoreCase = true) &&
+                sourceName.contains("indo", ignoreCase = true)
+            ) return@launch
+
+            val response = viewModel.state.generatorState?.response
+            val metadata = getMetaData()
+            val queryName = metadata.name ?: response?.name ?: return@launch
+            val query = SubtitleSearch(
+                query = queryName,
+                imdbId = response?.getImdbId(),
+                tmdbId = response?.getTMDbId()?.toInt(),
+                malId = response?.getMalId()?.toInt(),
+                aniListId = response?.getAniListId()?.toInt(),
+                epNumber = metadata.episode,
+                seasonNumber = metadata.season,
+                lang = langCode,
+                year = viewModel.currentSubtitleYear.value
+            )
+
+            val candidates = subsProviders.toList().amap { provider ->
+                when (val result = Resource.fromResult(provider.search(query = query))) {
+                    is Resource.Success -> result.value
+                    else -> emptyList()
+                }
+            }.flatten()
+
+            // Prefer the subtitle that most likely matches the video we are playing,
+            // since a mismatched release is the main cause of out of sync subtitles
+            val linkQuality = currentSelectedLink?.first?.quality ?: 0
+            val badRelease = Regex("\\b(cam|hdcam|telesync|hdts)\\b")
+            val score = { entry: AbstractSubtitleEntities.SubtitleEntity ->
+                val name = entry.name.lowercase()
+                var points = 0
+                if (entry.isHearingImpaired) points -= 3
+                if (linkQuality > 0 && name.contains("${linkQuality}p")) points += 3
+                if (name.contains("web")) points += 1
+                if (badRelease.containsMatchIn(name)) points -= 5
+                val ep = metadata.episode
+                if (ep != null && entry.epNumber != null) points += if (entry.epNumber == ep) 2 else -5
+                val season = metadata.season
+                if (season != null && entry.seasonNumber != null) {
+                    points += if (entry.seasonNumber == season) 2 else -5
+                }
+                val year = response?.year
+                if (year != null && entry.year != null) points += if (entry.year == year) 2 else -2
+                points
+            }
+
+            for (subtitleEntry in candidates.sortedByDescending { score(it) }) {
+                if (!isActive || viewModel.state.instance != instance) return@launch
+
+                val provider = subsProviders.firstOrNull { it.idPrefix == subtitleEntry.idPrefix }
+                    ?: continue
+                val subtitleResources = provider.resource(subtitleEntry).getOrNull() ?: continue
+                val subtitles = subtitleResources.getSubtitles().map { resource ->
+                    SubtitleData(
+                        originalName = resource.name ?: getName(subtitleEntry, true),
+                        nameSuffix = "",
+                        url = resource.url,
+                        origin = resource.origin,
+                        mimeType = resource.url.toSubtitleMimeType(),
+                        headers = subtitleEntry.headers,
+                        languageCode = subtitleEntry.lang,
+                    )
+                }
+                if (subtitles.isEmpty() || viewModel.state.subtitles.containsAll(subtitles)) continue
+
+                runOnMainThread {
+                    addAndSelectSubtitles(*subtitles.toTypedArray())
+                }
+                return@launch
+            }
+        }
+    }
+
     override fun showMirrorsDialogue() {
         try {
             currentSelectedSubtitles = player.getCurrentPreferredSubtitle()
@@ -1627,6 +1725,7 @@ class GeneratorPlayer : FullScreenPlayer() {
         }
         loadLink(firstAvailableLink, false)
         showPlayerMetadata()
+        autoFetchOnlineSubtitle()
     }
 
     private fun showPlayerMetadata() {

@@ -41,13 +41,29 @@ jobs:
         mkdir -p "${TMP_KEYSTORE_DIR}"
         echo "${KEYSTORE_BASE64}" | base64 -d > "${TMP_KEYSTORE_DIR}/prerelease_keystore.keystore"
 
+    # Alias dibaca otomatis dari keystore, jadi tidak perlu ditebak
+    - name: Detect key alias
+      env:
+        KS_PASS: ${{ secrets.KS_PASS }}
+      run: |
+        KS="${RUNNER_TEMP}/keystore/prerelease_keystore.keystore"
+        ALIAS=$(keytool -list -keystore "$KS" -storepass "$KS_PASS" 2>/dev/null | grep -m1 "PrivateKeyEntry" | cut -d, -f1)
+        if [ -z "$ALIAS" ]; then
+          echo "Alias tidak ditemukan. Periksa KS_BASE64 dan KS_PASS."
+          exit 1
+        fi
+        echo "Alias terdeteksi: $ALIAS"
+        echo "KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
+        # Sidik jari sertifikat (bukan rahasia), berguna untuk CLONER_SIGNATURE
+        keytool -list -v -keystore "$KS" -storepass "$KS_PASS" -alias "$ALIAS" | grep "SHA256:"
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v5
 
     - name: Run Gradle
       run: ./gradlew assemblePrereleaseRelease androidSourcesJar makeJar
       env:
-        SIGNING_KEY_ALIAS: "key0"
+        SIGNING_KEY_ALIAS: ${{ env.KEY_ALIAS }}
         SIGNING_KEY_PASSWORD: ${{ secrets.KS_PASS }}
         SIGNING_STORE_PASSWORD: ${{ secrets.KS_PASS }}
         SIMKL_CLIENT_ID: ${{ secrets.SIMKL_CLIENT_ID }}

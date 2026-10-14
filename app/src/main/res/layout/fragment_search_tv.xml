@@ -49,8 +49,7 @@
                 <FrameLayout
                     android:layout_width="match_parent"
                     android:layout_height="30dp"
-                    android:layout_gravity="center_vertical"
-                    android:layout_marginEnd="30dp">
+                    android:layout_gravity="center_vertical">
 
                     <androidx.appcompat.widget.SearchView
                         android:id="@+id/main_search"
@@ -63,8 +62,6 @@
 
                         android:inputType="text"
                         android:nextFocusLeft="@id/navigation_search"
-
-                        android:nextFocusRight="@id/search_filter"
                         android:nextFocusUp="@id/navigation_search"
                         android:nextFocusDown="@id/search_autofit_results"
                         android:paddingStart="-10dp"
@@ -94,23 +91,6 @@
                                     -->
                     </androidx.appcompat.widget.SearchView>
                 </FrameLayout>
-
-                <ImageView
-                    android:id="@+id/search_filter"
-                    android:layout_width="25dp"
-                    android:layout_height="25dp"
-                    android:layout_gravity="end|center_vertical"
-
-                    android:layout_margin="10dp"
-                    android:background="?selectableItemBackgroundBorderless"
-                    android:contentDescription="@string/change_providers_img_des"
-                    android:nextFocusLeft="@id/main_search"
-                    android:nextFocusRight="@id/main_search"
-                    android:nextFocusUp="@id/navigation_search"
-                    android:nextFocusDown="@id/tvtypes_chips_scroll"
-                    android:tag = "@string/tv_no_focus_tag"
-                    android:src="@drawable/ic_baseline_tune_24"
-                    app:tint="?attr/textColor" />
             </FrameLayout>
         </LinearLayout>
 
@@ -119,6 +99,11 @@
             layout="@layout/tvtypes_chips_scroll" />
     </LinearLayout>
 
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
 
     <com.lagradost.cloudstream3.ui.AutofitRecyclerView
         android:id="@+id/search_autofit_results"
@@ -145,7 +130,7 @@
         android:background="?attr/primaryBlackBackground"
         android:descendantFocusability="afterDescendants"
         android:nextFocusLeft="@id/navigation_search"
-        android:nextFocusUp="@id/tvtypes_chips"
+        android:nextFocusUp="@id/main_search"
         android:visibility="gone"
         tools:listitem="@layout/homepage_parent" />
 
@@ -157,25 +142,26 @@
         android:background="?attr/primaryBlackBackground"
         android:descendantFocusability="afterDescendants"
         android:nextFocusLeft="@id/navigation_search"
-        android:nextFocusUp="@id/tvtypes_chips"
+        android:nextFocusUp="@id/main_search"
         android:tag = "@string/tv_no_focus_tag"
         android:visibility="visible"
         tools:listitem="@layout/search_history_item" />
-    </LinearLayout>
 
     <!-- Suggestions overlay - appears on top of content -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/search_suggestions_recycler"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="100dp"
         android:layout_marginStart="@dimen/navbar_width"
         android:background="?attr/primaryGrayBackground"
         android:elevation="8dp"
         android:descendantFocusability="afterDescendants"
         android:nextFocusLeft="@id/navigation_search"
-        android:nextFocusUp="@id/tvtypes_chips"
+        android:nextFocusUp="@id/main_search"
         android:visibility="gone"
         tools:listitem="@layout/search_suggestion_item" />
+
+    </FrameLayout>
+    </LinearLayout>
 
 </FrameLayout>

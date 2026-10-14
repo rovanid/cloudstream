@@ -31,6 +31,12 @@ object FirstRunSetup {
     private const val HOME_API_NAME = "🏠 My Homepage"
 
     suspend fun runIfNeeded(activity: Activity) {
+        // Pemilih provider di Beranda disembunyikan, jadi homepage default harus
+        // selalu terisi (meski setup gagal), supaya begitu plugin terpasang Beranda langsung memuatnya.
+        if (DataStoreHelper.currentHomePage == null) {
+            DataStoreHelper.currentHomePage = HOME_API_NAME
+        }
+
         val prefs = activity.getSharedPreferences(PREFS, Activity.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_DONE, false)) return
 

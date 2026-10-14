@@ -20,22 +20,6 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-    - name: Generate access token
-      id: generate_token
-      uses: tibdex/github-app-token@v2
-      with:
-        app_id: ${{ secrets.GH_APP_ID }}
-        private_key: ${{ secrets.GH_APP_KEY }}
-        repository: "recloudstream/secrets"
-
-    - name: Generate access token (archive)
-      id: generate_archive_token
-      uses: tibdex/github-app-token@v2
-      with:
-        app_id: ${{ secrets.GH_APP_ID }}
-        private_key: ${{ secrets.GH_APP_KEY }}
-        repository: "recloudstream/cloudstream-archive"
-
     - uses: actions/checkout@v6
 
     - name: Set up JDK 17
@@ -47,49 +31,51 @@ jobs:
     - name: Grant execute permission for gradlew
       run: chmod +x gradlew
 
-    - name: Fetch keystore
-      id: fetch_keystore
+    # Keystore milik sendiri (secret KS_BASE64 dan KS_PASS)
+    - name: Decode keystore
+      env:
+        KEYSTORE_BASE64: ${{ secrets.KS_BASE64 }}
       run: |
-        TMP_KEYSTORE_FILE_PATH="${RUNNER_TEMP}"/keystore
-        mkdir -p "${TMP_KEYSTORE_FILE_PATH}"
-        curl -H "Authorization: token ${{ steps.generate_token.outputs.token }}" -o "${TMP_KEYSTORE_FILE_PATH}/prerelease_keystore.keystore" "https://raw.githubusercontent.com/recloudstream/secrets/master/keystore.jks"
-        curl -H "Authorization: token ${{ steps.generate_token.outputs.token }}" -o "keystore_password.txt" "https://raw.githubusercontent.com/recloudstream/secrets/master/keystore_password.txt"
-        KEY_PWD="$(cat keystore_password.txt)"
-        echo "::add-mask::${KEY_PWD}"
-        echo "key_pwd=$KEY_PWD" >> $GITHUB_OUTPUT
+        TMP_KEYSTORE_DIR="${RUNNER_TEMP}/keystore"
+        mkdir -p "${TMP_KEYSTORE_DIR}"
+        echo "${KEYSTORE_BASE64}" | base64 -d > "${TMP_KEYSTORE_DIR}/prerelease_keystore.keystore"
+
+    # Alias dibaca otomatis dari keystore
+    - name: Detect key alias
+      env:
+        KS_PASS: ${{ secrets.KS_PASS }}
+      run: |
+        KS="${RUNNER_TEMP}/keystore/prerelease_keystore.keystore"
+        ALIAS=$(keytool -list -keystore "$KS" -storepass "$KS_PASS" 2>/dev/null | grep -m1 "PrivateKeyEntry" | cut -d, -f1)
+        if [ -z "$ALIAS" ]; then
+          echo "Alias tidak ditemukan. Periksa KS_BASE64 dan KS_PASS."
+          exit 1
+        fi
+        echo "KEY_ALIAS=$ALIAS" >> "$GITHUB_ENV"
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v5
-      with:
-        cache-encryption-key: ${{ secrets.GRADLE_ENCRYPTION_KEY }}
 
     - name: Run Gradle
       run: ./gradlew assemblePrereleaseRelease
       env:
-        SIGNING_KEY_ALIAS: "key0"
-        SIGNING_KEY_PASSWORD: ${{ steps.fetch_keystore.outputs.key_pwd }}
-        SIGNING_STORE_PASSWORD: ${{ steps.fetch_keystore.outputs.key_pwd }}
+        SIGNING_KEY_ALIAS: ${{ env.KEY_ALIAS }}
+        SIGNING_KEY_PASSWORD: ${{ secrets.KS_PASS }}
+        SIGNING_STORE_PASSWORD: ${{ secrets.KS_PASS }}
         SIMKL_CLIENT_ID: ${{ secrets.SIMKL_CLIENT_ID }}
         SIMKL_CLIENT_SECRET: ${{ secrets.SIMKL_CLIENT_SECRET }}
-        TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
-        MDL_API_KEY: ${{ secrets.MDL_API_KEY }}
         MAL_KEY: ${{ secrets.MAL_KEY }}
         ANILIST_KEY: ${{ secrets.ANILIST_KEY }}
 
-    - uses: actions/checkout@v6
+    - name: Name the build
+      id: build_name
+      run: echo "name=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+    # Arsip disimpan sebagai artifact di repo ini (bukan di repo recloudstream)
+    - name: Upload archive
+      uses: actions/upload-artifact@v4
       with:
-        repository: "recloudstream/cloudstream-archive"
-        token: ${{ steps.generate_archive_token.outputs.token }}
-        path: "archive"
-
-    - name: Move build
-      run: cp app/build/outputs/apk/prerelease/release/*.apk "archive/$(git rev-parse --short HEAD).apk"
-
-    - name: Push archive
-      run: |
-        cd $GITHUB_WORKSPACE/archive
-        git config --local user.email "actions@github.com"
-        git config --local user.name "GitHub Actions"
-        git add .
-        git commit --amend -m "Build $GITHUB_SHA" || exit 0   # do not error if nothing to commit
-        git push --force
+        name: cloudstream-${{ steps.build_name.outputs.name }}
+        path: app/build/outputs/apk/prerelease/release/*.apk
+        retention-days: 30
+        if-no-files-found: error

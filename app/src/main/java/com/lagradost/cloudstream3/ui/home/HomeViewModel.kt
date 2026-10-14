@@ -53,6 +53,7 @@ import com.lagradost.cloudstream3.utils.DataStoreHelper.getViewPos
 import com.lagradost.cloudstream3.utils.downloader.DownloadObjects
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.util.EnumSet
 import java.util.concurrent.CopyOnWriteArrayList
@@ -210,6 +211,24 @@ class HomeViewModel : ViewModel() {
     }
 
     private var onGoingLoad: Job? = null
+
+    /** Nama provider yang sedang ditunggu, supaya tidak ada dua penantian sekaligus. */
+    private var waitingForApi: String? = null
+
+    /** Menunggu sampai provider [name] tersedia, maksimal [timeoutMs]. */
+    private suspend fun awaitApi(
+        name: String,
+        timeoutMs: Long = 8_000L,
+        stepMs: Long = 250L
+    ): MainAPI? {
+        var waited = 0L
+        while (waited < timeoutMs) {
+            getApiFromNameNull(name)?.let { return it }
+            delay(stepMs)
+            waited += stepMs
+        }
+        return getApiFromNameNull(name)
+    }
     private var isCurrentlyLoadingName: String? = null
     private fun loadAndCancel(api: MainAPI) {
         //println("loaded ${api.name}")
@@ -536,7 +555,21 @@ class HomeViewModel : ViewModel() {
                 // API is not found aka not loaded or removed, post the loading
                 // progress if waiting for plugins, otherwise nothing
                 if (PluginManager.loadedOnlinePlugins || PluginManager.isSafeMode()) {
-                    loadAndCancel(noneApi)
+                    if (preferredApiName != null && !PluginManager.isSafeMode()) {
+                        // Beri waktu beberapa detik agar provider homepage selesai dimuat
+                        if (waitingForApi == preferredApiName) return@ioSafe
+                        waitingForApi = preferredApiName
+                        _page.postValue(Resource.Loading())
+                        _apiName.postValue(preferredApiName)
+                        val found = try {
+                            awaitApi(preferredApiName)
+                        } finally {
+                            waitingForApi = null
+                        }
+                        loadAndCancel(found ?: noneApi)
+                    } else {
+                        loadAndCancel(noneApi)
+                    }
                 } else {
                     _page.postValue(Resource.Loading())
                     if (preferredApiName != null)

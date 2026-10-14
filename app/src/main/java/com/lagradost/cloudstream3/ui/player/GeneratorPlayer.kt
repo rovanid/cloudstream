@@ -1016,6 +1016,13 @@ class GeneratorPlayer : FullScreenPlayer() {
     private var autoOnlineSubInstance: Int = -1
 
     /**
+     * Providers whose videos already have burned-in (hardsub) subtitles.
+     * No online subtitle is added for them, otherwise two subtitles overlap.
+     * Matched against the provider name, case insensitive. Add more names here if needed.
+     */
+    private val hardsubProviders = listOf("animesail")
+
+    /**
      * Silently searches the online subtitle providers for the auto-select language and selects
      * the first result, but only when no subtitle in that language is already available.
      * Runs at most once per loaded episode.
@@ -1023,6 +1030,8 @@ class GeneratorPlayer : FullScreenPlayer() {
     private fun autoFetchOnlineSubtitle() {
         if (!subsProvidersIsActive) return
         val langCode = preferredAutoSelectSubtitles?.takeIf { it.isNotBlank() } ?: return
+        val apiName = (currentMeta as? ResultEpisode)?.apiName.orEmpty()
+        if (hardsubProviders.any { apiName.contains(it, ignoreCase = true) }) return
         val instance = viewModel.state.instance
         if (autoOnlineSubInstance == instance) return
         autoOnlineSubInstance = instance

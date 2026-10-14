@@ -203,7 +203,7 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
 
     /**
      * Di TV/emulator chip filter disembunyikan, jadi arah fokus D-pad dari kolom pencarian
-     * dan tombol filter diarahkan ke daftar yang sedang tampil.
+     * diarahkan ke daftar yang sedang tampil.
      */
     private fun updateTvFocusTargets() {
         if (isLayout(PHONE)) return
@@ -214,7 +214,6 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
             else -> R.id.search_autofit_results
         }
         b.mainSearch.nextFocusDownId = target
-        b.searchFilter.nextFocusDownId = target
     }
 
     private fun reloadRepos(success: Boolean = false) = main {
@@ -297,131 +296,10 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
         val searchExitIcon =
             binding.mainSearch.findViewById<ImageView>(androidx.appcompat.R.id.search_close_btn)
 
+        // Tombol filter provider dihapus: selalu cari di semua provider yang aktif.
+        // Reset pilihan lama yang mungkin tersimpan agar tidak membatasi hasil.
+        DataStoreHelper.searchPreferenceProviders = List(0) { "" } // list kosong = semua provider
         selectedApis = DataStoreHelper.searchPreferenceProviders.toMutableSet()
-
-        binding.searchFilter.setOnClickListener { searchView ->
-            searchView?.context?.let { ctx ->
-                val validAPIs = ctx.filterProviderByPreferredMedia(hasHomePageIsRequired = false)
-                var currentValidApis = listOf<MainAPI>()
-                val currentSelectedApis = if (selectedApis.isEmpty()) validAPIs.map { it.name }
-                    .toMutableSet() else selectedApis
-
-                val builder =
-                    BottomSheetDialog(ctx)
-
-                builder.behavior.state = BottomSheetBehavior.STATE_EXPANDED
-
-                val selectMainpageBinding: HomeSelectMainpageBinding =
-                    HomeSelectMainpageBinding.inflate(
-                        builder.layoutInflater,
-                        null,
-                        false
-                    )
-                builder.setContentView(selectMainpageBinding.root)
-                builder.show()
-                builder.let { dialog ->
-                    val previousSelectedApis = selectedApis.toSet()
-                    val previousSelectedSearchTypes = selectedSearchTypes.toSet()
-
-                    val isMultiLang = ctx.getApiProviderLangSettings().let { set ->
-                        set.size > 1 || set.contains(AllLanguagesName)
-                    }
-
-                    val cancelBtt = dialog.findViewById<MaterialButton>(R.id.cancel_btt)
-                    val applyBtt = dialog.findViewById<MaterialButton>(R.id.apply_btt)
-
-                    val listView = dialog.findViewById<ListView>(R.id.listview1)
-                    val arrayAdapter = ArrayAdapter<String>(ctx, R.layout.sort_bottom_single_choice)
-                    listView?.adapter = arrayAdapter
-                    listView?.choiceMode = AbsListView.CHOICE_MODE_MULTIPLE
-
-                    listView?.setOnItemClickListener { _, _, i, _ ->
-                        if (currentValidApis.isNotEmpty()) {
-                            val api = currentValidApis[i].name
-                            if (currentSelectedApis.contains(api)) {
-                                listView.setItemChecked(i, false)
-                                currentSelectedApis -= api
-                            } else {
-                                listView.setItemChecked(i, true)
-                                currentSelectedApis += api
-                            }
-                        }
-                    }
-
-                    fun updateList(types: List<TvType>) {
-                        DataStoreHelper.searchPreferenceTags = types
-
-                        arrayAdapter.clear()
-                        currentValidApis = validAPIs.filter { api ->
-                            api.supportedTypes.any {
-                                types.contains(it)
-                            }
-                        }.sortedBy { it.name.lowercase() }
-
-                        val names = currentValidApis.map {
-                            if (isMultiLang) "${
-                                SubtitleHelper.getFlagFromIso(
-                                    it.lang
-                                )?.plus(" ") ?: ""
-                            }${it.name}" else it.name
-                        }
-                        for ((index, api) in currentValidApis.map { it.name }.withIndex()) {
-                            listView?.setItemChecked(index, currentSelectedApis.contains(api))
-                        }
-
-                        //arrayAdapter.notifyDataSetChanged()
-                        arrayAdapter.addAll(names)
-                        arrayAdapter.notifyDataSetChanged()
-                    }
-
-                    bindChips(
-                        selectMainpageBinding.tvtypesChipsScroll.tvtypesChips,
-                        selectedSearchTypes,
-                        validAPIs.flatMap { api -> api.supportedTypes }.distinct()
-                    ) { list ->
-                        updateList(list)
-
-                        // refresh selected chips in main chips
-                        if (selectedSearchTypes.toSet() != list.toSet()) {
-                            selectedSearchTypes.clear()
-                            selectedSearchTypes.addAll(list)
-                            updateChips(
-                                binding.tvtypesChipsScroll.tvtypesChips,
-                                selectedSearchTypes
-                            )
-
-                        }
-                    }
-
-
-                    cancelBtt?.setOnClickListener {
-                        dialog.dismissSafe()
-                    }
-
-                    cancelBtt?.setOnClickListener {
-                        dialog.dismissSafe()
-                    }
-
-                    applyBtt?.setOnClickListener {
-                        //if (currentApiName != selectedApiName) {
-                        //    currentApiName?.let(callback)
-                        //}
-                        dialog.dismissSafe()
-                    }
-
-                    dialog.setOnDismissListener {
-                        DataStoreHelper.searchPreferenceProviders = currentSelectedApis.toList()
-                        selectedApis = currentSelectedApis
-
-                        // run search when dialog is close
-                        if (previousSelectedApis != selectedApis.toSet() || previousSelectedSearchTypes != selectedSearchTypes.toSet()) {
-                            search(binding.mainSearch.query.toString())
-                        }
-                    }
-                    updateList(selectedSearchTypes.toList())
-                }
-            }
-        }
 
         val settingsManager = context?.let { PreferenceManager.getDefaultSharedPreferences(it) }
         // Selalu tampilkan satu grid penuh tanpa judul sumber
@@ -432,11 +310,6 @@ class SearchFragment : BaseFragment<FragmentSearchBinding>(
         selectedSearchTypes = TvType.values().filter { it != TvType.NSFW }.toMutableList()
         DataStoreHelper.searchPreferenceTags = selectedSearchTypes.toList()
         binding.tvtypesChipsScroll.root.isVisible = false
-
-        if (!isLayout(PHONE)) {
-            binding.searchFilter.isFocusable = true
-            binding.searchFilter.isFocusableInTouchMode = true
-        }
 
         // Hide suggestions when search view loses focus (phone only)
         if (isLayout(PHONE)) {
